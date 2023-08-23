@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import glob
+import warnings
 from typing import List
 from dotenv import load_dotenv
 from multiprocessing import Pool
@@ -34,8 +35,8 @@ load_dotenv()
 persist_directory = os.environ.get('PERSIST_DIRECTORY')
 source_directory = os.environ.get('SOURCE_DIRECTORY', 'source_documents')
 embeddings_model_name = os.environ.get('EMBEDDINGS_MODEL_NAME')
-chunk_size = 500
-chunk_overlap = 50
+chunk_size = int(os.environ.get('CHUNK_SIZE'))
+chunk_overlap = int(os.environ.get('CHUNK_OVERLAP'))
 
 
 # Custom document loaders
@@ -86,7 +87,12 @@ def load_single_document(file_path: str) -> List[Document]:
     if ext in LOADER_MAPPING:
         loader_class, loader_args = LOADER_MAPPING[ext]
         loader = loader_class(file_path, **loader_args)
-        return loader.load()
+        try:
+            result =  loader.load()
+        except Exception as e:
+            warnings.warn(f"Error {e} when trying to load file {file_path}")
+            result = []
+        return result
 
     raise ValueError(f"Unsupported file extension '{ext}'")
 
