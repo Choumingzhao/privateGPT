@@ -5,6 +5,8 @@ from langchain.embeddings import HuggingFaceEmbeddings
 from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 from langchain.vectorstores import Chroma
 from langchain.llms import GPT4All, LlamaCpp
+from langchain.chat_models import AzureChatOpenAI
+from custom_llm import ZhipuAIAPI, FakeListChatModel
 import os
 import argparse
 import time
@@ -36,17 +38,27 @@ def main():
             llm = LlamaCpp(model_path=model_path, max_tokens=model_n_ctx, n_batch=model_n_batch, callbacks=callbacks, verbose=False)
         case "GPT4All":
             llm = GPT4All(model=model_path, max_tokens=model_n_ctx, backend='gptj', n_batch=model_n_batch, callbacks=callbacks, verbose=False)
+        case "AzureOpenAI":
+            llm = AzureChatOpenAI(model='gpt-35-turbo', max_tokens=model_n_ctx, callbacks=callbacks, verbose=False, deployment_name='jacopenaidfaf')
+        case "ZhipuAI":
+            llm = ZhipuAIAPI(model=os.environ['ZHIPUAI_MODEL'])
+        case "Fake":
+            llm = FakeListChatModel(responses=[''])
         case _default:
             # raise exception if model_type is not supported
-            raise Exception(f"Model type {model_type} is not supported. Please choose one of the following: LlamaCpp, GPT4All")
+            raise Exception(f"Model type {model_type} is not supported. Please choose one of the following: LlamaCpp, GPT4All, AzureOpenAI, ZhipuAI")
         
     qa = RetrievalQA.from_chain_type(llm=llm, chain_type="stuff", retriever=retriever, return_source_documents= not args.hide_source)
     # Interactive questions and answers
     while True:
-        query = input("\nEnter a query: ")
-        if query == "exit":
+        if model_type == 'Fake':
+            print('正在使用仅查询模式，仅返回查询的相关文献，不根据提问要求重新组织材料。\n')
+            query = input("\n输入提问: ").strip()
+        else:
+            query = input("\n输入查询关键词或句子: ").strip()
+        if query in ["exit", "退出"]:
             break
-        if query.strip() == "":
+        if query == "":
             continue
 
         # Get the answer from the chain
@@ -54,16 +66,21 @@ def main():
         res = qa(query)
         answer, docs = res['result'], [] if args.hide_source else res['source_documents']
         end = time.time()
-
-        # Print the result
-        print("\n\n> Question:")
-        print(query)
-        print(f"\n> Answer (took {round(end - start, 2)} s.):")
-        print(answer)
+        if model_type != 'Fake':
+            # Print the result
+            print("\n\n> 提问:")
+            print(query)
+            print(f"\n> 回答 (花费 {round(end - start, 2)} 秒):")
+            print(answer)
+        else:
+            print("\n\n> 查询内容:")
+            print(query)
+            print(f"\n>  花费 {round(end - start, 2)} 秒:")
 
         # Print the relevant sources used for the answer
-        for document in docs:
-            print("\n> " + document.metadata["source"] + ":")
+        print("来源：")
+        for i_doc, document in enumerate(docs):
+            print(f"\n> {i_doc+1}. {document.metadata['source']!r}:")
             print(document.page_content)
 
 def parse_arguments():
